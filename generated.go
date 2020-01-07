@@ -55,10 +55,12 @@ type ComplexityRoot struct {
 	Mutation struct {
 		PostMessage   func(childComplexity int, user string, text string) int
 		PublishStream func(childComplexity int, user string, sdp string) int
+		WatchStream   func(childComplexity int, stream string, user string, sdp string) int
 	}
 
 	Query struct {
 		Messages func(childComplexity int) int
+		Rooms    func(childComplexity int) int
 		Users    func(childComplexity int) int
 	}
 
@@ -72,10 +74,12 @@ type ComplexityRoot struct {
 type MutationResolver interface {
 	PostMessage(ctx context.Context, user string, text string) (*Message, error)
 	PublishStream(ctx context.Context, user string, sdp string) (string, error)
+	WatchStream(ctx context.Context, stream string, user string, sdp string) (string, error)
 }
 type QueryResolver interface {
 	Messages(ctx context.Context) ([]*Message, error)
 	Users(ctx context.Context) ([]string, error)
+	Rooms(ctx context.Context) ([]string, error)
 }
 type SubscriptionResolver interface {
 	MessagePosted(ctx context.Context, user string) (<-chan *Message, error)
@@ -150,12 +154,31 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.PublishStream(childComplexity, args["user"].(string), args["sdp"].(string)), true
 
+	case "Mutation.watchStream":
+		if e.complexity.Mutation.WatchStream == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_watchStream_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.WatchStream(childComplexity, args["stream"].(string), args["user"].(string), args["sdp"].(string)), true
+
 	case "Query.messages":
 		if e.complexity.Query.Messages == nil {
 			break
 		}
 
 		return e.complexity.Query.Messages(childComplexity), true
+
+	case "Query.rooms":
+		if e.complexity.Query.Rooms == nil {
+			break
+		}
+
+		return e.complexity.Query.Rooms(childComplexity), true
 
 	case "Query.users":
 		if e.complexity.Query.Users == nil {
@@ -298,11 +321,13 @@ type Message {
 type Mutation {
   postMessage(user: String!, text: String!): Message
   publishStream(user: String!, sdp: String!): String!
+  watchStream(stream: String!, user: String!, sdp: String!): String!
 }
 
 type Query {
   messages: [Message!]!
   users: [String!]!
+  rooms: [String!]!
 }
 
 type Subscription {
@@ -358,6 +383,36 @@ func (ec *executionContext) field_Mutation_publishStream_args(ctx context.Contex
 		}
 	}
 	args["sdp"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_watchStream_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["stream"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["stream"] = arg0
+	var arg1 string
+	if tmp, ok := rawArgs["user"]; ok {
+		arg1, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["user"] = arg1
+	var arg2 string
+	if tmp, ok := rawArgs["sdp"]; ok {
+		arg2, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["sdp"] = arg2
 	return args, nil
 }
 
@@ -672,6 +727,50 @@ func (ec *executionContext) _Mutation_publishStream(ctx context.Context, field g
 	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Mutation_watchStream(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_watchStream_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().WatchStream(rctx, args["stream"].(string), args["user"].(string), args["sdp"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Query_messages(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -729,6 +828,43 @@ func (ec *executionContext) _Query_users(ctx context.Context, field graphql.Coll
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
 		return ec.resolvers.Query().Users(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_rooms(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Query",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Rooms(rctx)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -2196,6 +2332,11 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
+		case "watchStream":
+			out.Values[i] = ec._Mutation_watchStream(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2245,6 +2386,20 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_users(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
+		case "rooms":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_rooms(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}

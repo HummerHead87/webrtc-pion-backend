@@ -196,3 +196,78 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 
 	return answer.SDP, nil
 }
+
+func (r *queryResolver) Rooms(ctx context.Context) ([]string, error) {
+	rms.Lock()
+	rooms := make([]string, 0, len(rms.items))
+	for k := range rms.items {
+		rooms = append(rooms, k)
+	}
+	rms.Unlock()
+
+	return rooms, nil
+}
+
+func (r *mutationResolver) WatchStream(ctx context.Context, stream string, user string, sdp string) (string, error) {
+	rms.Lock()
+	rm, ok := rms.items[stream]
+	rms.Unlock()
+	if !ok {
+		return "", gqlerror.Errorf("stream with name '%s' doesn't exist", stream)
+	}
+
+	// Create a new PeerConnection
+	subSender, err := r.api.NewPeerConnection(peerConnectionConfig)
+	checkError(err)
+
+	// Waiting for publisher track finish
+	for {
+		rm.videoTrackLock.RLock()
+		if rm.videoTrack == nil {
+			rm.videoTrackLock.RUnlock()
+			//if videoTrack == nil, waiting..
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			rm.videoTrackLock.RUnlock()
+			break
+		}
+	}
+
+	// Add local video track
+	rm.videoTrackLock.RLock()
+	_, err = subSender.AddTrack(rm.videoTrack)
+	rm.videoTrackLock.RUnlock()
+	checkError(err)
+
+	// Add local audio track
+	rm.audioTrackLock.RLock()
+	_, err = subSender.AddTrack(rm.audioTrack)
+	rm.audioTrackLock.RUnlock()
+	checkError(err)
+
+	// Set the remote SessionDescription
+	checkError(subSender.SetRemoteDescription(
+		webrtc.SessionDescription{
+			SDP:  string(sdp),
+			Type: webrtc.SDPTypeOffer,
+		}))
+
+	// Create answer
+	answer, err := subSender.CreateAnswer(nil)
+	checkError(err)
+
+	// Sets the LocalDescription, and starts our UDP listeners
+	checkError(subSender.SetLocalDescription(answer))
+
+	subSender.OnSignalingStateChange(func(signalState webrtc.SignalingState) {
+		fmt.Printf("user %s signalingState %v\n", user, signalState)
+		// fmt.Println("user signalState", signalState)
+	})
+
+	subSender.OnConnectionStateChange(func(conState webrtc.PeerConnectionState) {
+		fmt.Printf("user %s conState %v\n", user, conState)
+		// fmt.Println("connection state", conState)
+	})
+
+	return answer.SDP, nil
+}
