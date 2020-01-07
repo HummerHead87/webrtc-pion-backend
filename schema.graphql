@@ -9,6 +9,7 @@ type Message {
 
 type Mutation {
   postMessage(user: String!, text: String!): Message
+  publishStream(user: String!, sdp: String!): String!
 }
 
 type Query {

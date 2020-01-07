@@ -8,10 +8,37 @@ import (
 
 	"github.com/99designs/gqlgen/handler"
 	"github.com/gorilla/websocket"
+	"github.com/pion/webrtc/v2"
 	"github.com/rs/cors"
 )
 
 const defaultPort = "4000"
+
+var (
+	// Media engine
+	mEngine webrtc.MediaEngine
+	// API object
+	api *webrtc.API
+)
+
+func init() {
+	// Generate pem file for https
+	// genPem()
+
+	// Create a MediaEngine object to configure the supported codec
+	mEngine = webrtc.MediaEngine{}
+
+	// Setup the codecs you want to use.
+	// m.RegisterCodec(webrtc.NewRTPVP8Codec(webrtc.DefaultPayloadTypeVP8, 90000))
+
+	mEngine.RegisterCodec(webrtc.NewRTPVP8Codec(webrtc.DefaultPayloadTypeVP8, 90000))
+	mEngine.RegisterCodec(webrtc.NewRTPH264Codec(webrtc.DefaultPayloadTypeH264, 90000))
+	mEngine.RegisterCodec(webrtc.NewRTPVP9Codec(webrtc.DefaultPayloadTypeVP9, 90000))
+	mEngine.RegisterCodec(webrtc.NewRTPOpusCodec(webrtc.DefaultPayloadTypeOpus, 48000))
+
+	// Create the API object with the MediaEngine
+	api = webrtc.NewAPI(webrtc.WithMediaEngine(mEngine))
+}
 
 func main() {
 	port := os.Getenv("PORT")
@@ -19,7 +46,7 @@ func main() {
 		port = defaultPort
 	}
 
-	resolver, err := server.NewResolver()
+	resolver, err := server.NewResolver(mEngine, api)
 	if err != nil {
 		panic(err)
 	}

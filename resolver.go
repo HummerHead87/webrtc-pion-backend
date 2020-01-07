@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/webrtc/v2"
 	"github.com/prometheus/common/log"
 	"github.com/segmentio/ksuid"
 	"github.com/shirou/gopsutil/cpu"
@@ -14,11 +15,15 @@ import (
 type Resolver struct {
 	serverCPUChannels map[string]chan []float64
 	mutex             sync.Mutex
+	mEngine           webrtc.MediaEngine
+	api               *webrtc.API
 }
 
-func NewResolver() (*Resolver, error) {
+func NewResolver(mEngine webrtc.MediaEngine, api *webrtc.API) (*Resolver, error) {
 	resolver := &Resolver{
 		serverCPUChannels: map[string]chan []float64{},
+		mEngine:           mEngine,
+		api:               api,
 	}
 	err := resolver.init()
 	if err != nil {

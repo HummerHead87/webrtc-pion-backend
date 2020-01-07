@@ -5,6 +5,8 @@ go 1.13
 require (
 	github.com/99designs/gqlgen v0.10.2
 	github.com/gorilla/websocket v1.2.0
+	github.com/pion/rtcp v1.2.1
+	github.com/pion/webrtc/v2 v2.1.18
 	github.com/prometheus/common v0.7.0
 	github.com/rs/cors v1.6.0
 	github.com/segmentio/ksuid v1.0.2
