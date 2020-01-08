@@ -17,6 +17,7 @@ type Query {
   messages: [Message!]!
   users: [String!]!
   rooms: [String!]!
+  watchers(room: String!): [String!]!
 }
 
 type Subscription {
@@ -25,4 +26,6 @@ type Subscription {
   serverCPU: [Float!]!
   roomAdded: String!
   roomDeleted: String!
+  watcherJoined(room: String!): String!
+  watcherDisconnected(room: String!): String!
 }

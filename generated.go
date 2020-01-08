@@ -62,14 +62,17 @@ type ComplexityRoot struct {
 		Messages func(childComplexity int) int
 		Rooms    func(childComplexity int) int
 		Users    func(childComplexity int) int
+		Watchers func(childComplexity int, room string) int
 	}
 
 	Subscription struct {
-		MessagePosted func(childComplexity int, user string) int
-		RoomAdded     func(childComplexity int) int
-		RoomDeleted   func(childComplexity int) int
-		ServerCPU     func(childComplexity int) int
-		UserJoined    func(childComplexity int, user string) int
+		MessagePosted       func(childComplexity int, user string) int
+		RoomAdded           func(childComplexity int) int
+		RoomDeleted         func(childComplexity int) int
+		ServerCPU           func(childComplexity int) int
+		UserJoined          func(childComplexity int, user string) int
+		WatcherDisconnected func(childComplexity int, room string) int
+		WatcherJoined       func(childComplexity int, room string) int
 	}
 }
 
@@ -82,6 +85,7 @@ type QueryResolver interface {
 	Messages(ctx context.Context) ([]*Message, error)
 	Users(ctx context.Context) ([]string, error)
 	Rooms(ctx context.Context) ([]string, error)
+	Watchers(ctx context.Context, room string) ([]string, error)
 }
 type SubscriptionResolver interface {
 	MessagePosted(ctx context.Context, user string) (<-chan *Message, error)
@@ -89,6 +93,8 @@ type SubscriptionResolver interface {
 	ServerCPU(ctx context.Context) (<-chan []float64, error)
 	RoomAdded(ctx context.Context) (<-chan string, error)
 	RoomDeleted(ctx context.Context) (<-chan string, error)
+	WatcherJoined(ctx context.Context, room string) (<-chan string, error)
+	WatcherDisconnected(ctx context.Context, room string) (<-chan string, error)
 }
 
 type executableSchema struct {
@@ -191,6 +197,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Users(childComplexity), true
 
+	case "Query.watchers":
+		if e.complexity.Query.Watchers == nil {
+			break
+		}
+
+		args, err := ec.field_Query_watchers_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Watchers(childComplexity, args["room"].(string)), true
+
 	case "Subscription.messagePosted":
 		if e.complexity.Subscription.MessagePosted == nil {
 			break
@@ -235,6 +253,30 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Subscription.UserJoined(childComplexity, args["user"].(string)), true
+
+	case "Subscription.watcherDisconnected":
+		if e.complexity.Subscription.WatcherDisconnected == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_watcherDisconnected_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Subscription.WatcherDisconnected(childComplexity, args["room"].(string)), true
+
+	case "Subscription.watcherJoined":
+		if e.complexity.Subscription.WatcherJoined == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_watcherJoined_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Subscription.WatcherJoined(childComplexity, args["room"].(string)), true
 
 	}
 	return 0, false
@@ -346,6 +388,7 @@ type Query {
   messages: [Message!]!
   users: [String!]!
   rooms: [String!]!
+  watchers(room: String!): [String!]!
 }
 
 type Subscription {
@@ -354,6 +397,8 @@ type Subscription {
   serverCPU: [Float!]!
   roomAdded: String!
   roomDeleted: String!
+  watcherJoined(room: String!): String!
+  watcherDisconnected(room: String!): String!
 }
 `},
 )
@@ -450,6 +495,20 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_watchers_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["room"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["room"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Subscription_messagePosted_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -475,6 +534,34 @@ func (ec *executionContext) field_Subscription_userJoined_args(ctx context.Conte
 		}
 	}
 	args["user"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Subscription_watcherDisconnected_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["room"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["room"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Subscription_watcherJoined_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["room"]; ok {
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["room"] = arg0
 	return args, nil
 }
 
@@ -902,6 +989,50 @@ func (ec *executionContext) _Query_rooms(ctx context.Context, field graphql.Coll
 	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Query_watchers(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Query",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_watchers_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Watchers(rctx, args["room"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -1195,6 +1326,112 @@ func (ec *executionContext) _Subscription_roomDeleted(ctx context.Context, field
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
 		return ec.resolvers.Subscription().RoomDeleted(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return nil
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return nil
+	}
+	return func() graphql.Marshaler {
+		res, ok := <-resTmp.(<-chan string)
+		if !ok {
+			return nil
+		}
+		return graphql.WriterFunc(func(w io.Writer) {
+			w.Write([]byte{'{'})
+			graphql.MarshalString(field.Alias).MarshalGQL(w)
+			w.Write([]byte{':'})
+			ec.marshalNString2string(ctx, field.Selections, res).MarshalGQL(w)
+			w.Write([]byte{'}'})
+		})
+	}
+}
+
+func (ec *executionContext) _Subscription_watcherJoined(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = nil
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Subscription",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Subscription_watcherJoined_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return nil
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Subscription().WatcherJoined(rctx, args["room"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return nil
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return nil
+	}
+	return func() graphql.Marshaler {
+		res, ok := <-resTmp.(<-chan string)
+		if !ok {
+			return nil
+		}
+		return graphql.WriterFunc(func(w io.Writer) {
+			w.Write([]byte{'{'})
+			graphql.MarshalString(field.Alias).MarshalGQL(w)
+			w.Write([]byte{':'})
+			ec.marshalNString2string(ctx, field.Selections, res).MarshalGQL(w)
+			w.Write([]byte{'}'})
+		})
+	}
+}
+
+func (ec *executionContext) _Subscription_watcherDisconnected(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = nil
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Subscription",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Subscription_watcherDisconnected_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return nil
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Subscription().WatcherDisconnected(rctx, args["room"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -2517,6 +2754,20 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				}
 				return res
 			})
+		case "watchers":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_watchers(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
 		case "__type":
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
@@ -2555,6 +2806,10 @@ func (ec *executionContext) _Subscription(ctx context.Context, sel ast.Selection
 		return ec._Subscription_roomAdded(ctx, fields[0])
 	case "roomDeleted":
 		return ec._Subscription_roomDeleted(ctx, fields[0])
+	case "watcherJoined":
+		return ec._Subscription_watcherJoined(ctx, fields[0])
+	case "watcherDisconnected":
+		return ec._Subscription_watcherDisconnected(ctx, fields[0])
 	default:
 		panic("unknown field " + strconv.Quote(fields[0].Name))
 	}

@@ -20,8 +20,11 @@ type room struct {
 	// Local track
 	videoTrack *webrtc.Track
 	audioTrack *webrtc.Track
-	// videoTrackLock sync.RWMutex
-	// audioTrackLock sync.RWMutex
+
+	watcherJoinedChannels       map[string]chan string
+	watcherDisconnectedChannels map[string]chan string
+
+	watchers []string
 }
 
 type rooms struct {
@@ -78,7 +81,11 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 		return "", gqlerror.Errorf("user with name '%s' already streaming. Choose another name", user)
 	}
 
-	rm := room{}
+	rm := room{
+		watchers:                    []string{},
+		watcherJoinedChannels:       map[string]chan string{},
+		watcherDisconnectedChannels: map[string]chan string{},
+	}
 	_ctx, cancel := context.WithCancel(context.Background())
 
 	// cancelled := func() bool {
@@ -237,6 +244,17 @@ func (r *queryResolver) Rooms(ctx context.Context) ([]string, error) {
 	return rooms, nil
 }
 
+func (r *queryResolver) Watchers(ctx context.Context, room string) ([]string, error) {
+	rms.Lock()
+	defer rms.Unlock()
+	rm, ok := rms.items[room]
+	if !ok {
+		return nil, gqlerror.Errorf("no room with name '%v'", room)
+	}
+
+	return rm.watchers, nil
+}
+
 func (r *mutationResolver) WatchStream(ctx context.Context, stream string, user string, sdp string) (string, error) {
 	rms.Lock()
 	rm, ok := rms.items[stream]
@@ -295,8 +313,31 @@ func (r *mutationResolver) WatchStream(ctx context.Context, stream string, user 
 
 	subSender.OnConnectionStateChange(func(conState webrtc.PeerConnectionState) {
 		fmt.Printf("user %s conState %v\n", user, conState)
-		// fmt.Println("connection state", conState)
+		if conState == webrtc.PeerConnectionStateDisconnected {
+			// Удаляем пользователя из слайса watchers
+			rm.Lock()
+			var index int
+			for i, item := range rm.watchers {
+				if item == user {
+					index = i
+					break
+				}
+			}
+			rm.watchers = append(rm.watchers[:index], rm.watchers[index+1:]...)
+
+			for _, ch := range rm.watcherDisconnectedChannels {
+				ch <- user
+			}
+			rm.Unlock()
+		}
 	})
+
+	rm.Lock()
+	rm.watchers = append(rm.watchers, user)
+	for _, ch := range rm.watcherJoinedChannels {
+		ch <- user
+	}
+	rm.Unlock()
 
 	return answer.SDP, nil
 }
@@ -334,6 +375,56 @@ func (r *subscriptionResolver) RoomDeleted(ctx context.Context) (<-chan string, 
 		rmDeletedChannels.Lock()
 		delete(rmDeletedChannels.items, id)
 		rmDeletedChannels.Unlock()
+	}()
+
+	return ch, nil
+}
+
+func (r *subscriptionResolver) WatcherJoined(ctx context.Context, roomName string) (<-chan string, error) {
+	rms.Lock()
+	rm, ok := rms.items[roomName]
+	rms.Unlock()
+	if !ok {
+		return nil, gqlerror.Errorf("room with name '%v' doesn't exists", roomName)
+	}
+
+	ch := make(chan string, 1)
+	id := ksuid.New().String()
+
+	rm.Lock()
+	rm.watcherJoinedChannels[id] = ch
+	rm.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		rm.Lock()
+		delete(rm.watcherJoinedChannels, id)
+		rm.Unlock()
+	}()
+
+	return ch, nil
+}
+
+func (r *subscriptionResolver) WatcherDisconnected(ctx context.Context, roomName string) (<-chan string, error) {
+	rms.Lock()
+	rm, ok := rms.items[roomName]
+	rms.Unlock()
+	if !ok {
+		return nil, gqlerror.Errorf("room with name '%v' doesn't exists", roomName)
+	}
+
+	ch := make(chan string, 1)
+	id := ksuid.New().String()
+
+	rm.Lock()
+	rm.watcherDisconnectedChannels[id] = ch
+	rm.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		rm.Lock()
+		delete(rm.watcherDisconnectedChannels, id)
+		rm.Unlock()
 	}()
 
 	return ch, nil
