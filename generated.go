@@ -66,6 +66,8 @@ type ComplexityRoot struct {
 
 	Subscription struct {
 		MessagePosted func(childComplexity int, user string) int
+		RoomAdded     func(childComplexity int) int
+		RoomDeleted   func(childComplexity int) int
 		ServerCPU     func(childComplexity int) int
 		UserJoined    func(childComplexity int, user string) int
 	}
@@ -85,6 +87,8 @@ type SubscriptionResolver interface {
 	MessagePosted(ctx context.Context, user string) (<-chan *Message, error)
 	UserJoined(ctx context.Context, user string) (<-chan string, error)
 	ServerCPU(ctx context.Context) (<-chan []float64, error)
+	RoomAdded(ctx context.Context) (<-chan string, error)
+	RoomDeleted(ctx context.Context) (<-chan string, error)
 }
 
 type executableSchema struct {
@@ -198,6 +202,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Subscription.MessagePosted(childComplexity, args["user"].(string)), true
+
+	case "Subscription.roomAdded":
+		if e.complexity.Subscription.RoomAdded == nil {
+			break
+		}
+
+		return e.complexity.Subscription.RoomAdded(childComplexity), true
+
+	case "Subscription.roomDeleted":
+		if e.complexity.Subscription.RoomDeleted == nil {
+			break
+		}
+
+		return e.complexity.Subscription.RoomDeleted(childComplexity), true
 
 	case "Subscription.serverCPU":
 		if e.complexity.Subscription.ServerCPU == nil {
@@ -334,6 +352,8 @@ type Subscription {
   messagePosted(user: String!): Message!
   userJoined(user: String!): String!
   serverCPU: [Float!]!
+  roomAdded: String!
+  roomDeleted: String!
 }
 `},
 )
@@ -1104,6 +1124,98 @@ func (ec *executionContext) _Subscription_serverCPU(ctx context.Context, field g
 			graphql.MarshalString(field.Alias).MarshalGQL(w)
 			w.Write([]byte{':'})
 			ec.marshalNFloat2ᚕfloat64ᚄ(ctx, field.Selections, res).MarshalGQL(w)
+			w.Write([]byte{'}'})
+		})
+	}
+}
+
+func (ec *executionContext) _Subscription_roomAdded(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = nil
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Subscription",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Subscription().RoomAdded(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return nil
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return nil
+	}
+	return func() graphql.Marshaler {
+		res, ok := <-resTmp.(<-chan string)
+		if !ok {
+			return nil
+		}
+		return graphql.WriterFunc(func(w io.Writer) {
+			w.Write([]byte{'{'})
+			graphql.MarshalString(field.Alias).MarshalGQL(w)
+			w.Write([]byte{':'})
+			ec.marshalNString2string(ctx, field.Selections, res).MarshalGQL(w)
+			w.Write([]byte{'}'})
+		})
+	}
+}
+
+func (ec *executionContext) _Subscription_roomDeleted(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = nil
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Subscription",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Subscription().RoomDeleted(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return nil
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return nil
+	}
+	return func() graphql.Marshaler {
+		res, ok := <-resTmp.(<-chan string)
+		if !ok {
+			return nil
+		}
+		return graphql.WriterFunc(func(w io.Writer) {
+			w.Write([]byte{'{'})
+			graphql.MarshalString(field.Alias).MarshalGQL(w)
+			w.Write([]byte{':'})
+			ec.marshalNString2string(ctx, field.Selections, res).MarshalGQL(w)
 			w.Write([]byte{'}'})
 		})
 	}
@@ -2439,6 +2551,10 @@ func (ec *executionContext) _Subscription(ctx context.Context, sel ast.Selection
 		return ec._Subscription_userJoined(ctx, fields[0])
 	case "serverCPU":
 		return ec._Subscription_serverCPU(ctx, fields[0])
+	case "roomAdded":
+		return ec._Subscription_roomAdded(ctx, fields[0])
+	case "roomDeleted":
+		return ec._Subscription_roomDeleted(ctx, fields[0])
 	default:
 		panic("unknown field " + strconv.Quote(fields[0].Name))
 	}

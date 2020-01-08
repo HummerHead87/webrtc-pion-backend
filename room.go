@@ -9,6 +9,7 @@ import (
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v2"
+	"github.com/segmentio/ksuid"
 	"github.com/vektah/gqlparser/gqlerror"
 )
 
@@ -27,24 +28,39 @@ type rooms struct {
 	items map[string]*room
 }
 
-// Peer config
-var peerConnectionConfig = webrtc.Configuration{
-	ICEServers: []webrtc.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
-			// URLs: []string{"stun:35.184.155.87:3478"},
-		},
-	},
-	SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
+type roomAddedChannels struct {
+	sync.Mutex
+	items map[string]chan string
+}
+
+type roomDeletedChannels struct {
+	sync.Mutex
+	items map[string]chan string
 }
 
 const (
 	rtcpPLIInterval = time.Second * 3
 )
 
-var rms = rooms{
-	items: map[string]*room{},
-}
+var (
+	rmAddedChannels   = roomAddedChannels{items: map[string]chan string{}}
+	rmDeletedChannels = roomDeletedChannels{items: map[string]chan string{}}
+
+	// Peer config
+	peerConnectionConfig = webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+				// URLs: []string{"stun:35.184.155.87:3478"},
+			},
+		},
+		SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
+	}
+
+	rms = rooms{
+		items: map[string]*room{},
+	}
+)
 
 func checkError(err error) {
 	if err != nil {
@@ -185,6 +201,12 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 	rms.items[user] = &rm
 	rms.Unlock()
 
+	rmAddedChannels.Lock()
+	for _, ch := range rmAddedChannels.items {
+		ch <- user
+	}
+	rmAddedChannels.Unlock()
+
 	go func() {
 		<-_ctx.Done()
 
@@ -192,6 +214,12 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 		rms.Lock()
 		delete(rms.items, user)
 		rms.Unlock()
+
+		rmDeletedChannels.Lock()
+		for _, ch := range rmDeletedChannels.items {
+			ch <- user
+		}
+		rmDeletedChannels.Unlock()
 	}()
 
 	return answer.SDP, nil
@@ -270,4 +298,42 @@ func (r *mutationResolver) WatchStream(ctx context.Context, stream string, user 
 	})
 
 	return answer.SDP, nil
+}
+
+func (r *subscriptionResolver) RoomAdded(ctx context.Context) (<-chan string, error) {
+	ch := make(chan string, 1)
+	id := ksuid.New().String()
+
+	rmAddedChannels.Lock()
+	rmAddedChannels.items[id] = ch
+	rmAddedChannels.Unlock()
+
+	// Delete channel when done
+	go func() {
+		<-ctx.Done()
+		rmAddedChannels.Lock()
+		delete(rmAddedChannels.items, id)
+		rmAddedChannels.Unlock()
+	}()
+
+	return ch, nil
+}
+
+func (r *subscriptionResolver) RoomDeleted(ctx context.Context) (<-chan string, error) {
+	ch := make(chan string, 1)
+	id := ksuid.New().String()
+
+	rmDeletedChannels.Lock()
+	rmDeletedChannels.items[id] = ch
+	rmDeletedChannels.Unlock()
+
+	// Delete channel when done
+	go func() {
+		<-ctx.Done()
+		rmDeletedChannels.Lock()
+		delete(rmDeletedChannels.items, id)
+		rmDeletedChannels.Unlock()
+	}()
+
+	return ch, nil
 }

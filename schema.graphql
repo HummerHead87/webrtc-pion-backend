@@ -23,4 +23,6 @@ type Subscription {
   messagePosted(user: String!): Message!
   userJoined(user: String!): String!
   serverCPU: [Float!]!
+  roomAdded: String!
+  roomDeleted: String!
 }
