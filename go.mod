@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/99designs/gqlgen v0.10.2
+	github.com/amirhosseinab/sfs v0.0.0-20180126195727-19b83339bcfd
 	github.com/gorilla/websocket v1.2.0
 	github.com/pion/rtcp v1.2.1
 	github.com/pion/webrtc/v2 v2.1.18

@@ -7,12 +7,14 @@ import (
 	"os"
 
 	"github.com/99designs/gqlgen/handler"
+	"github.com/amirhosseinab/sfs"
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v2"
 	"github.com/rs/cors"
 )
 
-const defaultPort = "4000"
+const defaultHTTPPort = "4000"
+const defaultHTTPSPort = "4001"
 
 var (
 	// Media engine
@@ -23,7 +25,7 @@ var (
 
 func init() {
 	// Generate pem file for https
-	// genPem()
+	genPem()
 
 	// Create a MediaEngine object to configure the supported codec
 	mEngine = webrtc.MediaEngine{}
@@ -43,7 +45,12 @@ func init() {
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = defaultPort
+		port = defaultHTTPPort
+	}
+
+	portHTTPS := os.Getenv("PORT_HTTPS")
+	if portHTTPS == "" {
+		portHTTPS = defaultHTTPSPort
 	}
 
 	resolver, err := server.NewResolver(mEngine, api)
@@ -66,10 +73,19 @@ func main() {
 		),
 	)
 	mux.Handle("/playground", handler.Playground("GraphQL", "/graphql"))
+
+	fs := sfs.New(http.Dir("static"), IndexHandler)
+	// fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/", fs)
+	// mux.Handle("/", http.FileServer(http.File("static/index.html")))
+
 	handler := cors.AllowAll().Handler(mux)
 
 	log.Printf("connect to http://localhost:%s/playground for GraphQL playground", port)
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	go func() {
+		log.Fatal(http.ListenAndServe(":"+port, handler))
+	}()
+	log.Fatal(http.ListenAndServeTLS(":"+portHTTPS, "cert.pem", "key.pem", handler))
 
 	// http.Handle("/", handler.Playground("GraphQL playground", "/query"))
 	// http.Handle("/query", handler.GraphQL(
@@ -91,4 +107,8 @@ func main() {
 
 	// log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
 	// log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func IndexHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/index.html")
 }
