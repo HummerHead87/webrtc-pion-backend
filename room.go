@@ -14,13 +14,14 @@ import (
 )
 
 type room struct {
+	sync.RWMutex
 	pubReceiver *webrtc.PeerConnection
 
 	// Local track
-	videoTrack     *webrtc.Track
-	audioTrack     *webrtc.Track
-	videoTrackLock sync.RWMutex
-	audioTrackLock sync.RWMutex
+	videoTrack *webrtc.Track
+	audioTrack *webrtc.Track
+	// videoTrackLock sync.RWMutex
+	// audioTrackLock sync.RWMutex
 }
 
 type rooms struct {
@@ -108,9 +109,9 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 			var err error
 			videoTrack, err := pubReceiver.NewTrack(remoteTrack.PayloadType(), remoteTrack.SSRC(), "video", "pion")
 			checkError(err)
-			rm.videoTrackLock.Lock()
+			rm.Lock()
 			rm.videoTrack = videoTrack
-			rm.videoTrackLock.Unlock()
+			rm.Unlock()
 
 			// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 			go func() {
@@ -135,9 +136,9 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 					break
 				}
 				checkError(err)
-				rm.videoTrackLock.RLock()
+				rm.RLock()
 				_, err = rm.videoTrack.Write(rtpBuf[:i])
-				rm.videoTrackLock.RUnlock()
+				rm.RUnlock()
 
 				if err != io.ErrClosedPipe {
 					checkError(err)
@@ -147,9 +148,9 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 			// Create a local audio track, all our SFU clients will be fed via this track
 			audioTrack, err := pubReceiver.NewTrack(remoteTrack.PayloadType(), remoteTrack.SSRC(), "audio", "pion")
 			checkError(err)
-			rm.audioTrackLock.Lock()
+			rm.Lock()
 			rm.audioTrack = audioTrack
-			rm.audioTrackLock.Unlock()
+			rm.Unlock()
 
 			rtpBuf := make([]byte, 1400)
 			for {
@@ -158,9 +159,9 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 					break
 				}
 				checkError(err)
-				rm.audioTrackLock.RLock()
+				rm.RLock()
 				_, err = rm.audioTrack.Write(rtpBuf[:i])
-				rm.audioTrackLock.RUnlock()
+				rm.RUnlock()
 				if err != io.ErrClosedPipe {
 					checkError(err)
 				}
@@ -250,27 +251,27 @@ func (r *mutationResolver) WatchStream(ctx context.Context, stream string, user 
 
 	// Waiting for publisher track finish
 	for {
-		rm.videoTrackLock.RLock()
+		rm.RLock()
 		if rm.videoTrack == nil {
-			rm.videoTrackLock.RUnlock()
+			rm.RUnlock()
 			//if videoTrack == nil, waiting..
 			time.Sleep(100 * time.Millisecond)
 		} else {
-			rm.videoTrackLock.RUnlock()
+			rm.RUnlock()
 			break
 		}
 	}
 
 	// Add local video track
-	rm.videoTrackLock.RLock()
+	rm.RLock()
 	_, err = subSender.AddTrack(rm.videoTrack)
-	rm.videoTrackLock.RUnlock()
+	rm.RUnlock()
 	checkError(err)
 
 	// Add local audio track
-	rm.audioTrackLock.RLock()
+	rm.RLock()
 	_, err = subSender.AddTrack(rm.audioTrack)
-	rm.audioTrackLock.RUnlock()
+	rm.RUnlock()
 	checkError(err)
 
 	// Set the remote SessionDescription
