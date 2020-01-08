@@ -53,7 +53,7 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		PostMessage   func(childComplexity int, user string, text string) int
+		PostMessage   func(childComplexity int, room string, user string, text string) int
 		PublishStream func(childComplexity int, user string, sdp string) int
 		WatchStream   func(childComplexity int, stream string, user string, sdp string) int
 	}
@@ -66,7 +66,7 @@ type ComplexityRoot struct {
 	}
 
 	Subscription struct {
-		MessagePosted       func(childComplexity int, user string) int
+		MessagePosted       func(childComplexity int, room *string) int
 		RoomAdded           func(childComplexity int) int
 		RoomDeleted         func(childComplexity int) int
 		ServerCPU           func(childComplexity int) int
@@ -77,7 +77,7 @@ type ComplexityRoot struct {
 }
 
 type MutationResolver interface {
-	PostMessage(ctx context.Context, user string, text string) (*Message, error)
+	PostMessage(ctx context.Context, room string, user string, text string) (*Message, error)
 	PublishStream(ctx context.Context, user string, sdp string) (string, error)
 	WatchStream(ctx context.Context, stream string, user string, sdp string) (string, error)
 }
@@ -88,7 +88,7 @@ type QueryResolver interface {
 	Watchers(ctx context.Context, room string) ([]string, error)
 }
 type SubscriptionResolver interface {
-	MessagePosted(ctx context.Context, user string) (<-chan *Message, error)
+	MessagePosted(ctx context.Context, room *string) (<-chan *Message, error)
 	UserJoined(ctx context.Context, user string) (<-chan string, error)
 	ServerCPU(ctx context.Context) (<-chan []float64, error)
 	RoomAdded(ctx context.Context) (<-chan string, error)
@@ -150,7 +150,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Mutation.PostMessage(childComplexity, args["user"].(string), args["text"].(string)), true
+		return e.complexity.Mutation.PostMessage(childComplexity, args["room"].(string), args["user"].(string), args["text"].(string)), true
 
 	case "Mutation.publishStream":
 		if e.complexity.Mutation.PublishStream == nil {
@@ -219,7 +219,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Subscription.MessagePosted(childComplexity, args["user"].(string)), true
+		return e.complexity.Subscription.MessagePosted(childComplexity, args["room"].(*string)), true
 
 	case "Subscription.roomAdded":
 		if e.complexity.Subscription.RoomAdded == nil {
@@ -379,7 +379,7 @@ type Message {
 }
 
 type Mutation {
-  postMessage(user: String!, text: String!): Message
+  postMessage(room: String!, user: String!, text: String!): Message
   publishStream(user: String!, sdp: String!): String!
   watchStream(stream: String!, user: String!, sdp: String!): String!
 }
@@ -392,7 +392,7 @@ type Query {
 }
 
 type Subscription {
-  messagePosted(user: String!): Message!
+  messagePosted(room: String): Message!
   userJoined(user: String!): String!
   serverCPU: [Float!]!
   roomAdded: String!
@@ -411,21 +411,29 @@ func (ec *executionContext) field_Mutation_postMessage_args(ctx context.Context,
 	var err error
 	args := map[string]interface{}{}
 	var arg0 string
-	if tmp, ok := rawArgs["user"]; ok {
+	if tmp, ok := rawArgs["room"]; ok {
 		arg0, err = ec.unmarshalNString2string(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["user"] = arg0
+	args["room"] = arg0
 	var arg1 string
-	if tmp, ok := rawArgs["text"]; ok {
+	if tmp, ok := rawArgs["user"]; ok {
 		arg1, err = ec.unmarshalNString2string(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["text"] = arg1
+	args["user"] = arg1
+	var arg2 string
+	if tmp, ok := rawArgs["text"]; ok {
+		arg2, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["text"] = arg2
 	return args, nil
 }
 
@@ -512,14 +520,14 @@ func (ec *executionContext) field_Query_watchers_args(ctx context.Context, rawAr
 func (ec *executionContext) field_Subscription_messagePosted_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["user"]; ok {
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+	var arg0 *string
+	if tmp, ok := rawArgs["room"]; ok {
+		arg0, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
-	args["user"] = arg0
+	args["room"] = arg0
 	return args, nil
 }
 
@@ -775,7 +783,7 @@ func (ec *executionContext) _Mutation_postMessage(ctx context.Context, field gra
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().PostMessage(rctx, args["user"].(string), args["text"].(string))
+		return ec.resolvers.Mutation().PostMessage(rctx, args["room"].(string), args["user"].(string), args["text"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1134,7 +1142,7 @@ func (ec *executionContext) _Subscription_messagePosted(ctx context.Context, fie
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Subscription().MessagePosted(rctx, args["user"].(string))
+		return ec.resolvers.Subscription().MessagePosted(rctx, args["room"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)

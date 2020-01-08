@@ -67,10 +67,6 @@ func (r *Resolver) Subscription() SubscriptionResolver {
 
 type mutationResolver struct{ *Resolver }
 
-func (r *mutationResolver) PostMessage(ctx context.Context, user string, text string) (*Message, error) {
-	panic("not implemented")
-}
-
 type queryResolver struct{ *Resolver }
 
 func (r *queryResolver) Messages(ctx context.Context) ([]*Message, error) {
@@ -82,9 +78,6 @@ func (r *queryResolver) Users(ctx context.Context) ([]string, error) {
 
 type subscriptionResolver struct{ *Resolver }
 
-func (r *subscriptionResolver) MessagePosted(ctx context.Context, user string) (<-chan *Message, error) {
-	panic("not implemented")
-}
 func (r *subscriptionResolver) UserJoined(ctx context.Context, user string) (<-chan string, error) {
 	panic("not implemented")
 }

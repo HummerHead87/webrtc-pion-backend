@@ -23,6 +23,7 @@ type room struct {
 
 	watcherJoinedChannels       map[string]chan string
 	watcherDisconnectedChannels map[string]chan string
+	chatMessageChannels         map[string]chan *Message
 
 	watchers []string
 }
@@ -85,6 +86,7 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 		watchers:                    []string{},
 		watcherJoinedChannels:       map[string]chan string{},
 		watcherDisconnectedChannels: map[string]chan string{},
+		chatMessageChannels:         map[string]chan *Message{},
 	}
 	_ctx, cancel := context.WithCancel(context.Background())
 

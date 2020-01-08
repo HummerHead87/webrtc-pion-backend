@@ -8,7 +8,7 @@ type Message {
 }
 
 type Mutation {
-  postMessage(user: String!, text: String!): Message
+  postMessage(room: String!, user: String!, text: String!): Message
   publishStream(user: String!, sdp: String!): String!
   watchStream(stream: String!, user: String!, sdp: String!): String!
 }
@@ -21,7 +21,7 @@ type Query {
 }
 
 type Subscription {
-  messagePosted(user: String!): Message!
+  messagePosted(room: String): Message!
   userJoined(user: String!): String!
   serverCPU: [Float!]!
   roomAdded: String!
