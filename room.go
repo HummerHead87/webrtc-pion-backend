@@ -80,14 +80,14 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 	rm := room{}
 	_ctx, cancel := context.WithCancel(context.Background())
 
-	cancelled := func() bool {
-		select {
-		case <-_ctx.Done():
-			return true
-		default:
-			return false
-		}
-	}
+	// cancelled := func() bool {
+	// 	select {
+	// 	case <-_ctx.Done():
+	// 		return true
+	// 	default:
+	// 		return false
+	// 	}
+	// }
 
 	// Create a new RTCPeerConnection
 	pubReceiver, err := r.api.NewPeerConnection(peerConnectionConfig)
@@ -131,7 +131,7 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 			rtpBuf := make([]byte, 1400)
 			for {
 				i, err := remoteTrack.Read(rtpBuf)
-				if cancelled() {
+				if err == io.EOF {
 					break
 				}
 				checkError(err)
@@ -154,7 +154,7 @@ func (r *mutationResolver) PublishStream(ctx context.Context, user string, sdp s
 			rtpBuf := make([]byte, 1400)
 			for {
 				i, err := remoteTrack.Read(rtpBuf)
-				if cancelled() {
+				if err == io.EOF {
 					break
 				}
 				checkError(err)
