@@ -14,16 +14,24 @@ type Mutation {
 }
 
 type Query {
-  messages: [Message!]!
-  users: [String!]!
   rooms: [String!]!
   watchers(room: String!): [String!]!
 }
 
+type RAMUsage {
+  total: Int!
+  used: Int!
+  usedPercent: Float!
+}
+
+type ServerUsage {
+  cpu: [Float!]!
+  ram: RAMUsage!
+}
+
 type Subscription {
   messagePosted(room: String): Message!
-  userJoined(user: String!): String!
-  serverCPU: [Float!]!
+  serverLoad: ServerUsage!
   roomAdded: String!
   roomDeleted: String!
   watcherJoined(room: String!): String!

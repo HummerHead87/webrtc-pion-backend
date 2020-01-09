@@ -12,3 +12,14 @@ type Message struct {
 	CreatedAt time.Time `json:"createdAt"`
 	Text      string    `json:"text"`
 }
+
+type RAMUsage struct {
+	Total       int     `json:"total"`
+	Used        int     `json:"used"`
+	UsedPercent float64 `json:"usedPercent"`
+}
+
+type ServerUsage struct {
+	CPU []float64 `json:"cpu"`
+	RAM *RAMUsage `json:"ram"`
+}

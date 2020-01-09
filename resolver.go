@@ -10,20 +10,21 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/segmentio/ksuid"
 	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
 ) // THIS CODE IS A STARTING POINT ONLY. IT WILL NOT BE UPDATED WITH SCHEMA CHANGES.
 
 type Resolver struct {
-	serverCPUChannels map[string]chan []float64
-	mutex             sync.Mutex
-	mEngine           webrtc.MediaEngine
-	api               *webrtc.API
+	serverUsageChannels map[string]chan *ServerUsage
+	mutex               sync.Mutex
+	mEngine             webrtc.MediaEngine
+	api                 *webrtc.API
 }
 
 func NewResolver(mEngine webrtc.MediaEngine, api *webrtc.API) (*Resolver, error) {
 	resolver := &Resolver{
-		serverCPUChannels: map[string]chan []float64{},
-		mEngine:           mEngine,
-		api:               api,
+		serverUsageChannels: map[string]chan *ServerUsage{},
+		mEngine:             mEngine,
+		api:                 api,
 	}
 	err := resolver.init()
 	if err != nil {
@@ -44,9 +45,24 @@ func (r *Resolver) init() error {
 				continue
 			}
 
+			ram, err := mem.VirtualMemory()
+			if err != nil {
+				log.Errorf("unable to get RAM usage stats: %s", err)
+				continue
+			}
+
+			su := &ServerUsage{
+				CPU: percent,
+				RAM: &RAMUsage{
+					Total:       int(bToMb(ram.Total)),
+					Used:        int(bToMb(ram.Used)),
+					UsedPercent: ram.UsedPercent,
+				},
+			}
+
 			r.mutex.Lock()
-			for _, ch := range r.serverCPUChannels {
-				ch <- percent
+			for _, ch := range r.serverUsageChannels {
+				ch <- su
 			}
 			r.mutex.Unlock()
 		}
@@ -69,33 +85,27 @@ type mutationResolver struct{ *Resolver }
 
 type queryResolver struct{ *Resolver }
 
-func (r *queryResolver) Messages(ctx context.Context) ([]*Message, error) {
-	panic("not implemented")
-}
-func (r *queryResolver) Users(ctx context.Context) ([]string, error) {
-	panic("not implemented")
-}
-
 type subscriptionResolver struct{ *Resolver }
 
-func (r *subscriptionResolver) UserJoined(ctx context.Context, user string) (<-chan string, error) {
-	panic("not implemented")
-}
-func (r *subscriptionResolver) ServerCPU(ctx context.Context) (<-chan []float64, error) {
-	ch := make(chan []float64, 1)
+func (r *subscriptionResolver) ServerLoad(ctx context.Context) (<-chan *ServerUsage, error) {
+	ch := make(chan *ServerUsage, 10)
 	userID := ksuid.New().String()
 
 	r.mutex.Lock()
-	r.serverCPUChannels[userID] = ch
+	r.serverUsageChannels[userID] = ch
 	r.mutex.Unlock()
 
 	// Delete channel when done
 	go func() {
 		<-ctx.Done()
 		r.mutex.Lock()
-		delete(r.serverCPUChannels, userID)
+		delete(r.serverUsageChannels, userID)
 		r.mutex.Unlock()
 	}()
 
 	return ch, nil
+}
+
+func bToMb(val uint64) uint64 {
+	return val / 1024 / 1024
 }

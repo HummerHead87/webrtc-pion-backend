@@ -59,18 +59,26 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		Messages func(childComplexity int) int
 		Rooms    func(childComplexity int) int
-		Users    func(childComplexity int) int
 		Watchers func(childComplexity int, room string) int
+	}
+
+	RAMUsage struct {
+		Total       func(childComplexity int) int
+		Used        func(childComplexity int) int
+		UsedPercent func(childComplexity int) int
+	}
+
+	ServerUsage struct {
+		CPU func(childComplexity int) int
+		RAM func(childComplexity int) int
 	}
 
 	Subscription struct {
 		MessagePosted       func(childComplexity int, room *string) int
 		RoomAdded           func(childComplexity int) int
 		RoomDeleted         func(childComplexity int) int
-		ServerCPU           func(childComplexity int) int
-		UserJoined          func(childComplexity int, user string) int
+		ServerLoad          func(childComplexity int) int
 		WatcherDisconnected func(childComplexity int, room string) int
 		WatcherJoined       func(childComplexity int, room string) int
 	}
@@ -82,15 +90,12 @@ type MutationResolver interface {
 	WatchStream(ctx context.Context, stream string, user string, sdp string) (string, error)
 }
 type QueryResolver interface {
-	Messages(ctx context.Context) ([]*Message, error)
-	Users(ctx context.Context) ([]string, error)
 	Rooms(ctx context.Context) ([]string, error)
 	Watchers(ctx context.Context, room string) ([]string, error)
 }
 type SubscriptionResolver interface {
 	MessagePosted(ctx context.Context, room *string) (<-chan *Message, error)
-	UserJoined(ctx context.Context, user string) (<-chan string, error)
-	ServerCPU(ctx context.Context) (<-chan []float64, error)
+	ServerLoad(ctx context.Context) (<-chan *ServerUsage, error)
 	RoomAdded(ctx context.Context) (<-chan string, error)
 	RoomDeleted(ctx context.Context) (<-chan string, error)
 	WatcherJoined(ctx context.Context, room string) (<-chan string, error)
@@ -176,26 +181,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.WatchStream(childComplexity, args["stream"].(string), args["user"].(string), args["sdp"].(string)), true
 
-	case "Query.messages":
-		if e.complexity.Query.Messages == nil {
-			break
-		}
-
-		return e.complexity.Query.Messages(childComplexity), true
-
 	case "Query.rooms":
 		if e.complexity.Query.Rooms == nil {
 			break
 		}
 
 		return e.complexity.Query.Rooms(childComplexity), true
-
-	case "Query.users":
-		if e.complexity.Query.Users == nil {
-			break
-		}
-
-		return e.complexity.Query.Users(childComplexity), true
 
 	case "Query.watchers":
 		if e.complexity.Query.Watchers == nil {
@@ -208,6 +199,41 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.Watchers(childComplexity, args["room"].(string)), true
+
+	case "RAMUsage.total":
+		if e.complexity.RAMUsage.Total == nil {
+			break
+		}
+
+		return e.complexity.RAMUsage.Total(childComplexity), true
+
+	case "RAMUsage.used":
+		if e.complexity.RAMUsage.Used == nil {
+			break
+		}
+
+		return e.complexity.RAMUsage.Used(childComplexity), true
+
+	case "RAMUsage.usedPercent":
+		if e.complexity.RAMUsage.UsedPercent == nil {
+			break
+		}
+
+		return e.complexity.RAMUsage.UsedPercent(childComplexity), true
+
+	case "ServerUsage.cpu":
+		if e.complexity.ServerUsage.CPU == nil {
+			break
+		}
+
+		return e.complexity.ServerUsage.CPU(childComplexity), true
+
+	case "ServerUsage.ram":
+		if e.complexity.ServerUsage.RAM == nil {
+			break
+		}
+
+		return e.complexity.ServerUsage.RAM(childComplexity), true
 
 	case "Subscription.messagePosted":
 		if e.complexity.Subscription.MessagePosted == nil {
@@ -235,24 +261,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Subscription.RoomDeleted(childComplexity), true
 
-	case "Subscription.serverCPU":
-		if e.complexity.Subscription.ServerCPU == nil {
+	case "Subscription.serverLoad":
+		if e.complexity.Subscription.ServerLoad == nil {
 			break
 		}
 
-		return e.complexity.Subscription.ServerCPU(childComplexity), true
-
-	case "Subscription.userJoined":
-		if e.complexity.Subscription.UserJoined == nil {
-			break
-		}
-
-		args, err := ec.field_Subscription_userJoined_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Subscription.UserJoined(childComplexity, args["user"].(string)), true
+		return e.complexity.Subscription.ServerLoad(childComplexity), true
 
 	case "Subscription.watcherDisconnected":
 		if e.complexity.Subscription.WatcherDisconnected == nil {
@@ -385,16 +399,24 @@ type Mutation {
 }
 
 type Query {
-  messages: [Message!]!
-  users: [String!]!
   rooms: [String!]!
   watchers(room: String!): [String!]!
 }
 
+type RAMUsage {
+  total: Int!
+  used: Int!
+  usedPercent: Float!
+}
+
+type ServerUsage {
+  cpu: [Float!]!
+  ram: RAMUsage!
+}
+
 type Subscription {
   messagePosted(room: String): Message!
-  userJoined(user: String!): String!
-  serverCPU: [Float!]!
+  serverLoad: ServerUsage!
   roomAdded: String!
   roomDeleted: String!
   watcherJoined(room: String!): String!
@@ -528,20 +550,6 @@ func (ec *executionContext) field_Subscription_messagePosted_args(ctx context.Co
 		}
 	}
 	args["room"] = arg0
-	return args, nil
-}
-
-func (ec *executionContext) field_Subscription_userJoined_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 string
-	if tmp, ok := rawArgs["user"]; ok {
-		arg0, err = ec.unmarshalNString2string(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["user"] = arg0
 	return args, nil
 }
 
@@ -886,80 +894,6 @@ func (ec *executionContext) _Mutation_watchStream(ctx context.Context, field gra
 	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_messages(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-		ec.Tracer.EndFieldExecution(ctx)
-	}()
-	rctx := &graphql.ResolverContext{
-		Object:   "Query",
-		Field:    field,
-		Args:     nil,
-		IsMethod: true,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Messages(rctx)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]*Message)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNMessage2ᚕᚖhummerhead87ᚋchatᚐMessageᚄ(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Query_users(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-		ec.Tracer.EndFieldExecution(ctx)
-	}()
-	rctx := &graphql.ResolverContext{
-		Object:   "Query",
-		Field:    field,
-		Args:     nil,
-		IsMethod: true,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Users(rctx)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]string)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
-}
-
 func (ec *executionContext) _Query_rooms(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -1116,6 +1050,191 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _RAMUsage_total(ctx context.Context, field graphql.CollectedField, obj *RAMUsage) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "RAMUsage",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Total, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _RAMUsage_used(ctx context.Context, field graphql.CollectedField, obj *RAMUsage) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "RAMUsage",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Used, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _RAMUsage_usedPercent(ctx context.Context, field graphql.CollectedField, obj *RAMUsage) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "RAMUsage",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.UsedPercent, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(float64)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNFloat2float64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ServerUsage_cpu(ctx context.Context, field graphql.CollectedField, obj *ServerUsage) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "ServerUsage",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CPU, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]float64)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNFloat2ᚕfloat64ᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _ServerUsage_ram(ctx context.Context, field graphql.CollectedField, obj *ServerUsage) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "ServerUsage",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.RAM, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*RAMUsage)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNRAMUsage2ᚖhummerhead87ᚋchatᚐRAMUsage(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Subscription_messagePosted(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -1169,60 +1288,7 @@ func (ec *executionContext) _Subscription_messagePosted(ctx context.Context, fie
 	}
 }
 
-func (ec *executionContext) _Subscription_userJoined(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = nil
-		}
-		ec.Tracer.EndFieldExecution(ctx)
-	}()
-	rctx := &graphql.ResolverContext{
-		Object:   "Subscription",
-		Field:    field,
-		Args:     nil,
-		IsMethod: true,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Subscription_userJoined_args(ctx, rawArgs)
-	if err != nil {
-		ec.Error(ctx, err)
-		return nil
-	}
-	rctx.Args = args
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Subscription().UserJoined(rctx, args["user"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return nil
-	}
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return nil
-	}
-	return func() graphql.Marshaler {
-		res, ok := <-resTmp.(<-chan string)
-		if !ok {
-			return nil
-		}
-		return graphql.WriterFunc(func(w io.Writer) {
-			w.Write([]byte{'{'})
-			graphql.MarshalString(field.Alias).MarshalGQL(w)
-			w.Write([]byte{':'})
-			ec.marshalNString2string(ctx, field.Selections, res).MarshalGQL(w)
-			w.Write([]byte{'}'})
-		})
-	}
-}
-
-func (ec *executionContext) _Subscription_serverCPU(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
+func (ec *executionContext) _Subscription_serverLoad(ctx context.Context, field graphql.CollectedField) (ret func() graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
 		if r := recover(); r != nil {
@@ -1241,7 +1307,7 @@ func (ec *executionContext) _Subscription_serverCPU(ctx context.Context, field g
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Subscription().ServerCPU(rctx)
+		return ec.resolvers.Subscription().ServerLoad(rctx)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1254,7 +1320,7 @@ func (ec *executionContext) _Subscription_serverCPU(ctx context.Context, field g
 		return nil
 	}
 	return func() graphql.Marshaler {
-		res, ok := <-resTmp.(<-chan []float64)
+		res, ok := <-resTmp.(<-chan *ServerUsage)
 		if !ok {
 			return nil
 		}
@@ -1262,7 +1328,7 @@ func (ec *executionContext) _Subscription_serverCPU(ctx context.Context, field g
 			w.Write([]byte{'{'})
 			graphql.MarshalString(field.Alias).MarshalGQL(w)
 			w.Write([]byte{':'})
-			ec.marshalNFloat2ᚕfloat64ᚄ(ctx, field.Selections, res).MarshalGQL(w)
+			ec.marshalNServerUsage2ᚖhummerhead87ᚋchatᚐServerUsage(ctx, field.Selections, res).MarshalGQL(w)
 			w.Write([]byte{'}'})
 		})
 	}
@@ -2720,34 +2786,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Query")
-		case "messages":
-			field := field
-			out.Concurrently(i, func() (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_messages(ctx, field)
-				if res == graphql.Null {
-					atomic.AddUint32(&invalids, 1)
-				}
-				return res
-			})
-		case "users":
-			field := field
-			out.Concurrently(i, func() (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_users(ctx, field)
-				if res == graphql.Null {
-					atomic.AddUint32(&invalids, 1)
-				}
-				return res
-			})
 		case "rooms":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
@@ -2791,6 +2829,75 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 	return out
 }
 
+var rAMUsageImplementors = []string{"RAMUsage"}
+
+func (ec *executionContext) _RAMUsage(ctx context.Context, sel ast.SelectionSet, obj *RAMUsage) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.RequestContext, sel, rAMUsageImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RAMUsage")
+		case "total":
+			out.Values[i] = ec._RAMUsage_total(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "used":
+			out.Values[i] = ec._RAMUsage_used(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "usedPercent":
+			out.Values[i] = ec._RAMUsage_usedPercent(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
+var serverUsageImplementors = []string{"ServerUsage"}
+
+func (ec *executionContext) _ServerUsage(ctx context.Context, sel ast.SelectionSet, obj *ServerUsage) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.RequestContext, sel, serverUsageImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	var invalids uint32
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ServerUsage")
+		case "cpu":
+			out.Values[i] = ec._ServerUsage_cpu(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "ram":
+			out.Values[i] = ec._ServerUsage_ram(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalids > 0 {
+		return graphql.Null
+	}
+	return out
+}
+
 var subscriptionImplementors = []string{"Subscription"}
 
 func (ec *executionContext) _Subscription(ctx context.Context, sel ast.SelectionSet) func() graphql.Marshaler {
@@ -2806,10 +2913,8 @@ func (ec *executionContext) _Subscription(ctx context.Context, sel ast.Selection
 	switch fields[0].Name {
 	case "messagePosted":
 		return ec._Subscription_messagePosted(ctx, fields[0])
-	case "userJoined":
-		return ec._Subscription_userJoined(ctx, fields[0])
-	case "serverCPU":
-		return ec._Subscription_serverCPU(ctx, fields[0])
+	case "serverLoad":
+		return ec._Subscription_serverLoad(ctx, fields[0])
 	case "roomAdded":
 		return ec._Subscription_roomAdded(ctx, fields[0])
 	case "roomDeleted":
@@ -3125,45 +3230,22 @@ func (ec *executionContext) marshalNFloat2ᚕfloat64ᚄ(ctx context.Context, sel
 	return ret
 }
 
-func (ec *executionContext) marshalNMessage2hummerhead87ᚋchatᚐMessage(ctx context.Context, sel ast.SelectionSet, v Message) graphql.Marshaler {
-	return ec._Message(ctx, sel, &v)
+func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v interface{}) (int, error) {
+	return graphql.UnmarshalInt(v)
 }
 
-func (ec *executionContext) marshalNMessage2ᚕᚖhummerhead87ᚋchatᚐMessageᚄ(ctx context.Context, sel ast.SelectionSet, v []*Message) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
+func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
+	res := graphql.MarshalInt(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
 	}
-	for i := range v {
-		i := i
-		rctx := &graphql.ResolverContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithResolverContext(ctx, rctx)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNMessage2ᚖhummerhead87ᚋchatᚐMessage(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
+	return res
+}
 
-	}
-	wg.Wait()
-	return ret
+func (ec *executionContext) marshalNMessage2hummerhead87ᚋchatᚐMessage(ctx context.Context, sel ast.SelectionSet, v Message) graphql.Marshaler {
+	return ec._Message(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalNMessage2ᚖhummerhead87ᚋchatᚐMessage(ctx context.Context, sel ast.SelectionSet, v *Message) graphql.Marshaler {
@@ -3174,6 +3256,34 @@ func (ec *executionContext) marshalNMessage2ᚖhummerhead87ᚋchatᚐMessage(ctx
 		return graphql.Null
 	}
 	return ec._Message(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNRAMUsage2hummerhead87ᚋchatᚐRAMUsage(ctx context.Context, sel ast.SelectionSet, v RAMUsage) graphql.Marshaler {
+	return ec._RAMUsage(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNRAMUsage2ᚖhummerhead87ᚋchatᚐRAMUsage(ctx context.Context, sel ast.SelectionSet, v *RAMUsage) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._RAMUsage(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNServerUsage2hummerhead87ᚋchatᚐServerUsage(ctx context.Context, sel ast.SelectionSet, v ServerUsage) graphql.Marshaler {
+	return ec._ServerUsage(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNServerUsage2ᚖhummerhead87ᚋchatᚐServerUsage(ctx context.Context, sel ast.SelectionSet, v *ServerUsage) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._ServerUsage(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v interface{}) (string, error) {
